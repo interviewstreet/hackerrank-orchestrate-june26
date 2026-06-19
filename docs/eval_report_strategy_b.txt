@@ -1,0 +1,25 @@
+# Evaluation Report — strategy_b
+
+=== Exact-Match Accuracy ===
+  evidence_standard_met                18/ 20  90.0%
+  valid_image                          18/ 20  90.0%
+  issue_type                           13/ 20  65.0%
+  object_part                          16/ 20  80.0%
+  claim_status                         16/ 20  80.0%
+  severity                             12/ 20  60.0%
+
+=== Set Micro-F1 ===
+  risk_flags                          P=88.6%  R=83.8%  F1=86.1%
+  supporting_image_ids                P=85.7%  R=85.7%  F1=85.7%
+
+=== Confusion Matrix (claim_status) ===
+                                         supported             contradicted   not_enough_information
+           gold:supported                       13                        0                        0
+        gold:contradicted                        2                        2                        1
+gold:not_enough_information                        1                        0                        1
+
+=== Per-Row Differences (claim_status) ===
+  [05] user_005: pred='supported'  gold='contradicted'
+  [18] user_032: pred='supported'  gold='not_enough_information'
+  [19] user_033: pred='not_enough_information'  gold='contradicted'
+  [20] user_034: pred='supported'  gold='contradicted'

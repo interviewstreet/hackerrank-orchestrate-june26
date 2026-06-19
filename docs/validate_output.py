@@ -160,4 +160,4 @@ if errors:
     for e in errors:
         print(e)
 else:
-    print("=== VALIDATION PASSED — all checks green ===")
+    print("=== VALIDATION PASSED - all checks green ===")

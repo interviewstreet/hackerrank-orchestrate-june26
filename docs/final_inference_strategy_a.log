@@ -1,0 +1,60 @@
+[01/44] . user_002
+[02/44] . user_005
+[03/44] . user_004
+[04/44] . user_007
+[05/44] . user_008
+[06/44] . user_003
+[07/44] . user_011
+[08/44] . user_004
+[09/44] . user_018
+[10/44] . user_014
+[11/44] . user_017
+[12/44] . user_018
+[13/44] . user_019
+[14/44] . user_020
+[15/44] . user_025
+[16/44] . user_026
+[17/44] . user_027
+[18/44] . user_028
+[19/44] . user_029
+[20/44] . user_030
+[21/44] . user_031
+[22/44] . user_032
+[23/44] . user_034
+[24/44] . user_036
+[25/44] . user_037
+[26/44] . user_038
+[27/44] . user_039
+[28/44] . user_040
+[29/44] . user_041
+[30/44] . user_042
+[31/44] . user_043
+[32/44] . user_044
+[33/44] . user_045
+[34/44] . user_047
+[35/44] . user_046
+[36/44] . user_034
+[37/44] . user_042
+[38/44] . user_022
+[39/44] . user_016
+[40/44] . user_033
+[41/44] . user_045
+[42/44] . user_041
+[43/44] . user_040
+[44/44] . user_045
+
+Wrote 44 rows to output.csv
+=== Run Accounting Summary ===
+  Rows processed     : 44
+  Zero-media rows    : 0
+  Cache hits         : 0
+  SDK requests sent  : 44
+  Total input tokens : 68,218
+  Total output tokens: 7,763
+  Total latency      : 324.3s
+  Retries            : 0
+  Errors             : 0
+  Est. input cost    : $0.0273 USD (list price, not necessarily charged)
+  Est. output cost   : $0.0186 USD (list price, not necessarily charged)
+  Est. total cost    : $0.0459 USD (list price, not necessarily charged)
+================================
