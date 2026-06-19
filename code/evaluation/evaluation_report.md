@@ -13,13 +13,18 @@ cost and token estimates are based on list prices.
 
 | Run | Claims CSV | SDK requests | Cache hits | Retries | Errors |
 |---|---|---|---|---|---|
+| B0 manual smoke (strategy_a) | sample_claims.csv (1 row) | 1 | 0 | 0 | 0 |
 | Sample A (strategy_a) | sample_claims.csv (20 rows) | 20 | 0 | 0 | 0 |
+| Sample B (strategy_b) | sample_claims.csv (20 rows) | 20 | 0 | 0 | 0 |
+| Sample C (strategy_c) | sample_claims.csv (20 rows) | 20 | 0 | 0 | 0 |
 | Final A (strategy_a) | claims.csv (44 rows) | 44 | 0 | 0 | 0 |
-| Zero-API replays (both) | — | 0 | 20 + 44 = 64 | 0 | 0 |
+| Zero-API replays (cache-hit) | — | 0 | 64 (20+44) | 0 | 0 |
+| **Lifecycle total** | | **105** | | | |
 
-The sample run (20 rows) was used for A/B/C strategy comparison. The final
-run (44 rows) produced the accepted `output.csv`. All subsequent re-runs
-after the cache was warm used 0 SDK requests (pure cache hits).
+Strategies B and C each made 20 SDK calls during their initial evaluation
+runs. Later re-scoring of saved B/C output CSVs made no additional calls.
+All zero-API replays (for the contradicted-verdict fix and packaging
+verification) were pure cache hits against the original A caches.
 
 Model used: `qwen3.5-plus` via Alibaba Cloud DashScope US endpoint
 (`https://dashscope-us.aliyuncs.com/compatible-mode/v1`).
@@ -59,22 +64,24 @@ across independent calls in this configuration.
 
 ### Sample run (20 rows)
 
-The sample dataset contains 20 claims. Image paths reference `images/sample/`
-entries. Based on the same 1.2 images-per-claim average observed in the final
-set, the estimated image count is approximately 24 images.
+The sample dataset contains 20 claims referencing **29 image files**
+(avg ~1.45 images/claim). No AVIF files appear in the sample set.
 
 ### Final run (44 rows)
 
 | Metric | Value |
 |---|---|
-| Total image files referenced | 111 (44 claims, avg ~2.5 files/claim) |
-| Successfully decoded | 111 |
+| Total image files referenced | 82 (44 claims, avg ~1.86 files/claim) |
+| Successfully decoded | 82 |
 | AVIF files (.jpg extension) | 8 (detected by ISOBMFF probe; decoded via FFmpeg) |
 | Zero-media rows | 0 (all 44 rows had at least one usable frame) |
 
-All 111 files decoded successfully. AVIF files were identified by inspecting
+All 82 files decoded successfully. AVIF files were identified by inspecting
 the first 12 bytes for the `ftyp`+`avif` ISOBMFF signature and decoded via
 FFmpeg subprocess. No claim triggered the zero-media deterministic fallback.
+
+Across both the sample and final datasets combined: 29 + 82 = **111 files**,
+of which 8 are AVIF.
 
 ---
 
@@ -159,9 +166,10 @@ claim row fields (user_id, image_paths, user_claim, claim_object), and
 image file bytes. Identical re-runs hit the cache and make zero API calls.
 
 The final output.csv was produced from the original 44-call run and then
-regenerated twice more from cache (0 calls each) for the contradict-verdict
-consistency fix and the post-packaging verification. Total SDK calls across
-the entire project lifecycle for claims.csv: 44.
+replayed once more from cache (0 calls) after the contradicted-verdict
+consistency fix to regenerate the accepted output. The cache directory
+for claims.csv is not reused for sample runs. Total SDK calls for claims.csv
+across the entire lifecycle: 44.
 
 ### Retry behaviour
 
@@ -196,13 +204,15 @@ added complexity.
 Three strategies were compared on the 20-row sample before committing to the
 final inference. See `evaluation/RESULTS.md` for the complete metric table.
 
-| Strategy | Description | Sample A/B decision |
+| Strategy | Description | Outcome |
 |---|---|---|
-| A (final) | Minimal prompt: claim + images | Selected — clean P0 verdict accuracy |
-| B | Context-rich: + evidence rules + history + calibration | P0 regression on user_020 |
-| C | Calibrated: A context + calibration block only | P0 regression on user_033 |
+| A (final) | Minimal prompt: claim + images | Selected — best P0 metrics |
+| B | Context-rich: + evidence rules + history + calibration | Eliminated — regressed claim_status 85%→80% and valid_image 95%→90% |
+| C | Calibrated: A context + calibration block only | Eliminated — regressed claim_status and valid_image; added user_033 and user_008 errors |
 
-Strategies B and C were evaluated using cache-only replay (0 additional API
-calls). The total number of unique SDK calls across all three strategy
-comparisons was 80 (20 A + 20 B + 20 C) on the sample, plus 44 for the
-accepted final run.
+Each strategy made 20 SDK calls for its initial evaluation run (60 calls total
+for the sample comparison). Strategy A was then used for the 44-row final run
+(44 calls). The B0 manual smoke added 1 call. Lifecycle total: 105 SDK calls.
+
+Decision-time A/B/C metrics and per-row error attribution are in
+`evaluation/RESULTS.md`.

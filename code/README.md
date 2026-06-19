@@ -24,9 +24,10 @@ pip install -r code/requirements.txt
 ### FFmpeg
 
 Required to decode AVIF images submitted as `.jpg` files.
-8 of the 111 image files in the dataset are single-frame ISOBMFF containers
-with `ftyp` major brand `avif`. FFmpeg 6+ is required; FFmpeg 8.x was used
-for the accepted inference run.
+8 of the 82 image files in `claims.csv` (the final test set) are single-frame
+ISOBMFF containers with `ftyp` major brand `avif`; 0 appear in the 29-image
+sample set. Across both sets combined: 8 of 111 total files are AVIF.
+FFmpeg 6+ is required; FFmpeg 8.x was used for the accepted inference run.
 
 ```powershell
 ffmpeg -version   # must print a version line

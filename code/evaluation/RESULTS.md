@@ -13,15 +13,19 @@ Three strategies were evaluated on the 20-row labelled sample before the final
 
 **Winner: Strategy A**
 
-Strategy B improved some secondary fields (issue_type, object_part) but
-regressed on P0 verdict correctness: it misclassified user_020 as `supported`
-instead of `not_enough_information` (the image shows a hand occluding the
-claimed damage, and Strategy B's history context led it to interpret presence
-of the object as partial support). Strategy C's calibration block introduced a
-regression on user_033: the guidance caused the model to label evidence
-insufficient for a wrong-object contradiction, producing `NEI` instead of
-`contradicted`. Verdict accuracy and valid_image correctness were designated
-P0 priority; A's cleaner decisions on these P0 fields determined the winner.
+Strategy A had three claim-status misses (user_005, user_020, user_034; all
+gold `contradicted`, all predicted `supported`), giving 85.0% claim_status
+accuracy.
+
+Strategy B fixed user_020 (correctly predicted `contradicted`) but introduced
+new errors on user_032 and user_033, so claim_status fell to 80.0%. B also
+regressed valid_image accuracy from 95.0% to 90.0%.
+
+Strategy C retained the user_020 miss, introduced the user_033 regression, and
+additionally regressed valid_image on user_008 (from 95.0% to 90.0%).
+
+P0 priority was verdict accuracy (claim_status) and valid_image. Both B and C
+regressed on these P0 fields, disqualifying them despite P1/P2 gains.
 
 ---
 
@@ -57,29 +61,31 @@ beyond normal floating-point display.
 | gold: contradicted | 3 | 2 | 0 |
 | gold: NEI | 0 | 0 | 2 |
 
-The three contradicted-as-supported misses: user_002 (3-image set with
-inconsistent models + stock photo; A produces NEI, gold is contradicted),
-user_020 (hand-occluded trackpad; both A and B produce NEI, gold is
-contradicted), and user_034 (A produces supported for the crush case, which
-aligned with the evidence; gold label is contradicted).
+Strategy A's three misses: user_005, user_020, and user_034. All three are
+gold `contradicted` and were predicted `supported` by Strategy A.
 
 ---
 
-## Strategy Comparison (sample, post-validator)
+## Strategy Comparison (sample, decision-time metrics)
+
+Metrics captured at the time the A/B/C decision was made (before the
+contradicted-verdict validator repair). Each strategy made 20 SDK calls for
+its initial evaluation run.
 
 | Metric | A | B | C |
 |---|---|---|---|
-| evidence_standard_met | **100.0%** | 95.0% | 100.0% |
-| valid_image | 95.0% | 95.0% | 95.0% |
-| claim_status | **85.0%** | **85.0%** | 80.0% |
-| object_part | 85.0% | **90.0%** | 85.0% |
-| issue_type | 50.0% | **60.0%** | 50.0% |
-| severity | 45.0% | **50.0%** | 45.0% |
-| risk_flags F1 | **84.9%** | 81.1% | 82.5% |
-| supporting_image_ids F1 | **95.2%** | 90.7% | 88.8% |
+| evidence_standard_met | 90.0% | 90.0% | 90.0% |
+| valid_image | **95.0%** | 90.0% | 90.0% |
+| claim_status | **85.0%** | 80.0% | 80.0% |
+| object_part | 85.0% | 80.0% | **90.0%** |
+| issue_type | 50.0% | **65.0%** | 55.0% |
+| severity | 45.0% | **60.0%** | 55.0% |
+| risk_flags F1 | 84.9% | 86.1% | **91.4%** |
+| supporting_image_ids F1 | **85.7%** | 85.7% | 81.8% |
 
-B/C metrics are from the comparison run performed before accepting Strategy A;
-B and C were run with cache-only replay (0 additional SDK requests each).
+After the deterministic contradicted-verdict repair (zero additional API
+calls), Strategy A's sample metrics improved: evidence_standard_met 90%→**100%**
+and supporting_image_ids F1 85.7%→**95.2%**. All other A metrics are unchanged.
 
 ---
 

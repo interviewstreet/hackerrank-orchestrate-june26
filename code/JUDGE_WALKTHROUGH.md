@@ -33,9 +33,11 @@ ISOBMFF headers (detectable in the first 12 bytes) are decoded via FFmpeg
 subprocess even when the extension is `.jpg`. Other images are read with Pillow
 and resized to a maximum long-edge of 1024 px before base64-encoding.
 
-8 of the 111 files in the test set are AVIF files with `.jpg` extensions.
-All 8 decoded successfully. Rows with zero usable frames take a deterministic
-`not_enough_information` path and make no API call.
+8 of the 82 files in the final test set (claims.csv) are AVIF files with
+`.jpg` extensions. All 8 decoded successfully. Rows with zero usable frames
+take a deterministic `not_enough_information` path and make no API call.
+(The combined sample + final dataset totals 111 files; 0 AVIF appear in the
+sample set.)
 
 ### Stage 2: User history lookup (`history.py`)
 
@@ -55,11 +57,14 @@ and an injection-guard clause instructing the model to treat text visible in
 images as untrusted user content.
 
 **Strategy B**: adds evidence rules, user history summary, and calibration
-guidance. Regressed on one P0 verdict (user_020) and was eliminated.
+guidance. Fixed the user_020 miss but introduced new claim-status errors on
+user_032 and user_033, and regressed valid_image on user_020. Net P0 loss
+eliminated B.
 
 **Strategy C**: Strategy A context + calibration block only (no history or
-evidence rules). Regressed on user_033 (wrong-object contradiction became NEI)
-and was eliminated.
+evidence rules). Retained the user_020 miss, introduced the user_033 regression
+(wrong-object contradiction became NEI), and regressed valid_image on user_008.
+Eliminated.
 
 ### Stage 4: VLM call (`vision_client.py`)
 
@@ -96,8 +101,8 @@ Applied to every row including cache hits. Enforces:
 ### Evaluation setup
 
 All strategies were evaluated on the 20-row labelled sample
-(`dataset/sample_claims.csv`) under identical conditions. Strategies B and C
-used cache-only replay (0 additional API calls each).
+(`dataset/sample_claims.csv`). Each strategy made 20 SDK calls for its initial
+evaluation run (60 total). No strategy re-used another's cache.
 
 ### Priority tiers
 
@@ -107,19 +112,20 @@ used cache-only replay (0 additional API calls each).
 
 ### Why A won over B
 
-Strategy B improved P1/P2 fields (issue_type +10%, object_part +5%, severity
-+5%) but regressed on P0: user_020 (hand-occluded trackpad) changed from
-`not_enough_information` to `supported` because the history context prompted
-the model to interpret the claimed object's presence as partial evidence.
-P0 regressions are disqualifying.
+Strategy A had three claim-status misses (user_005, user_020, user_034; all
+gold `contradicted`, predicted `supported`), giving 85.0% claim_status accuracy.
+Strategy B fixed user_020 but introduced new errors on user_032 and user_033,
+and regressed valid_image from 95.0% to 90.0%, so claim_status fell to 80.0%.
+Despite B's gains in issue_type (+15%), severity (+15%), and risk_flags F1, the
+P0 losses disqualified it.
 
 ### Why A won over C
 
-Strategy C's calibration guidance caused user_033 (wrong-object image of a toy
-car submitted as evidence of a real car body panel claim) to change from
-`contradicted` to `not_enough_information`. The calibration block's instruction
-to set `evidence_standard_met=false` when evidence cannot confirm either verdict
-led the model to withhold the contradiction verdict. P0 regression eliminated C.
+Strategy C retained Strategy A's user_020 miss, introduced the user_033
+regression (wrong-object contradiction became NEI), and additionally regressed
+valid_image on user_008, also dropping valid_image from 95.0% to 90.0%. P0
+losses on two fields eliminated C despite C's better object_part (90.0%) and
+risk_flags F1 (91.4%).
 
 ---
 
