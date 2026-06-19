@@ -74,10 +74,12 @@ if (Test-Path $envExample) {
     Copy-Item $envExample (Join-Path $codeDir ".env.example")
 }
 
-# --- Copy evaluation/RESULTS.md explicitly (may live in evaluation/ already) ---
-$resultsPath = Join-Path $src "evaluation\RESULTS.md"
-if (Test-Path $resultsPath) {
-    Copy-Item $resultsPath (Join-Path $codeDir "evaluation\RESULTS.md") -Force
+# --- Copy evaluation/*.md explicitly (ensure both reports are included) ---
+foreach ($mdFile in @("RESULTS.md", "evaluation_report.md")) {
+    $mdPath = Join-Path $src "evaluation\$mdFile"
+    if (Test-Path $mdPath) {
+        Copy-Item $mdPath (Join-Path $codeDir "evaluation\$mdFile") -Force
+    }
 }
 
 # --- Prune excluded artifacts from staging ---
@@ -107,6 +109,7 @@ $required = @(
     "code\agent\prompt.py",
     "code\evaluation\main.py",
     "code\evaluation\RESULTS.md",
+    "code\evaluation\evaluation_report.md",
     "code\tests\test_validator.py"
 )
 
@@ -155,4 +158,7 @@ Write-Host "==> code.zip created successfully"
 Write-Host "    Size:   $sizeKB KB ($sizeMB MB)"
 Write-Host "    SHA256: $sha256"
 Write-Host ""
-Write-Host "Submit alongside output.csv as separate files."
+Write-Host "Submit three artifacts separately to HackerRank:"
+Write-Host "  1. code.zip           (this archive)"
+Write-Host "  2. output.csv         (inference results; gitignored; never bundled)"
+Write-Host "  3. chat_transcript.txt (AI interaction transcript; outside code.zip)"

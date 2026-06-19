@@ -85,7 +85,7 @@ B and C were run with cache-only replay (0 additional SDK requests each).
 
 ## Final 44-Row Inference Accounting
 
-Run date: 2026-06-19/20.  
+Run date: 2026-06-19/20.
 Cache directory: `code/.cache/claims_strategy_a_final_v1` (44 entries, gitignored).
 
 | Metric | Value |
@@ -119,9 +119,9 @@ or free-tier credit and may differ from the invoice amount.
 | evidence_standard_met | true | 35 |
 | evidence_standard_met | false | 9 |
 
-The 9 NEI rows all have `evidence_standard_met=false`.  
+The 9 NEI rows all have `evidence_standard_met=false`.
 All 14 contradicted rows have `evidence_standard_met=true` (enforced by
-the deterministic post-validator).  
+the deterministic post-validator).
 The 21 supported rows have `evidence_standard_met` set by the model (all
 true in the accepted output).
 

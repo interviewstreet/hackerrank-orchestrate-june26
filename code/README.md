@@ -235,8 +235,16 @@ Use the allowlist-based packaging script to build `code.zip`:
 ```
 
 The script creates `code.zip` with a top-level `code/` directory containing
-source, tests, prompts, evaluation, requirements, and documentation.  
+source, tests, prompts, evaluation, requirements, and documentation.
 Excluded: `.env`, caches, `__pycache__`, logs, smoke outputs, `output.csv`,
 and unrelated strategy artifacts.
 
-`code.zip` is gitignored. Submit it alongside `output.csv` as separate files.
+`code.zip` is gitignored.
+
+### Submission artifacts
+
+Submit three files separately to HackerRank — do not bundle them together:
+
+1. **`code.zip`** — source code archive (built by `scripts/package.ps1`)
+2. **`output.csv`** — inference results for `claims.csv` (gitignored, never bundled)
+3. **`chat_transcript.txt`** — AI interaction transcript (kept outside `code.zip`)
