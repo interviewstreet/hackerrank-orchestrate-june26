@@ -1,0 +1,14 @@
+.env
+.env.local
+code/.cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.DS_Store
+output.csv
+code.zip
