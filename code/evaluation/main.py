@@ -4,24 +4,25 @@ Ground truth defaults to ``dataset/sample_claims.csv`` which contains
 all 14 columns (the last 10 are the expected output labels).
 
 Usage:
-    # Score strategy_a output vs sample labels
+    # Score one strategy
     python -m code.evaluation.main --strategy strategy_a
-
-    # Score strategy_b output vs sample labels
     python -m code.evaluation.main --strategy strategy_b
+    python -m code.evaluation.main --strategy strategy_c
 
-    # Score both
-    python -m code.evaluation.main --strategy both
+    # Score all three
+    python -m code.evaluation.main --strategy all
 
 Output prediction CSVs are expected at:
     challenge/output_strategy_a.csv   (strategy_a)
     challenge/output_strategy_b.csv   (strategy_b)
+    challenge/output_strategy_c.csv   (strategy_c)
 
 Workflow:
-    1. Run: python -m code.main --strategy strategy_a \\
+    1. Run: python -m code.main --strategy strategy_c \\
                --claims-csv dataset/sample_claims.csv \\
-               --output-csv output_strategy_a.csv
-    2. Then: python -m code.evaluation.main --strategy strategy_a
+               --output-csv output_strategy_c.csv \\
+               --cache-dir code/.cache/eval_strategy_c_v1
+    2. Then: python -m code.evaluation.main --strategy strategy_c
 """
 from __future__ import annotations
 
@@ -120,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--strategy",
-        choices=["strategy_a", "strategy_b", "both"],
+        choices=["strategy_a", "strategy_b", "strategy_c", "all"],
         default="strategy_b",
         help="Which output CSV(s) to evaluate (default: strategy_b)",
     )
@@ -140,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     strategies = (
-        ["strategy_a", "strategy_b"] if args.strategy == "both" else [args.strategy]
+        ["strategy_a", "strategy_b", "strategy_c"] if args.strategy == "all" else [args.strategy]
     )
     rc = 0
     for strat in strategies:

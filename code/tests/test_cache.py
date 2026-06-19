@@ -5,7 +5,8 @@ from PIL import Image
 
 from code.agent.cache import (
     CacheStore, make_cache_key,
-    _PROMPT_SCHEMA_VERSION, _MEDIA_NORM_TAG, _STRATEGY_B_CALIBRATION_VERSION,
+    _PROMPT_SCHEMA_VERSION, _MEDIA_NORM_TAG,
+    _STRATEGY_B_CALIBRATION_VERSION, _STRATEGY_C_CALIBRATION_VERSION,
 )
 from code.agent.models import ClaimRow, MediaFile, ModelOutput
 
@@ -209,6 +210,26 @@ def test_cache_key_unlabeled_frame_included():
     k_partial = make_cache_key("qwen", "qwen3.5-plus", "strategy_a", _claim(), None, None, [mf_partial])
     k_full = make_cache_key("qwen", "qwen3.5-plus", "strategy_a", _claim(), None, None, [mf_full])
     assert k_partial != k_full
+
+
+def test_strategy_c_calibration_version_constant_exists():
+    assert isinstance(_STRATEGY_C_CALIBRATION_VERSION, str) and _STRATEGY_C_CALIBRATION_VERSION
+
+
+def test_cache_key_strategy_c_differs_from_a():
+    """Strategy C key includes calibration version; A does not — keys must differ."""
+    c = _claim()
+    k_a = make_cache_key("qwen", "qwen3.5-plus", "strategy_a", c, None, None, [])
+    k_c = make_cache_key("qwen", "qwen3.5-plus", "strategy_c", c, None, None, [])
+    assert k_a != k_c
+
+
+def test_cache_key_strategy_c_differs_from_b():
+    """Strategy C and B have different strategy strings and version constants — keys must differ."""
+    c = _claim()
+    k_b = make_cache_key("qwen", "qwen3.5-plus", "strategy_b", c, None, None, [])
+    k_c = make_cache_key("qwen", "qwen3.5-plus", "strategy_c", c, None, None, [])
+    assert k_b != k_c
 
 
 def test_cache_key_unlabeled_vs_zero_frames():

@@ -5,8 +5,9 @@ and writes challenge/output.csv (44 rows, 14 columns).
 
 Usage:
     python -m code.main                        # Strategy B (default)
-    python -m code.main --strategy strategy_a  # baseline
-    python -m code.main --strategy strategy_b  # context-rich (default)
+    python -m code.main --strategy strategy_a  # baseline (minimal context)
+    python -m code.main --strategy strategy_b  # context-rich (history + evidence + calibration)
+    python -m code.main --strategy strategy_c  # calibrated baseline (minimal context + calibration)
     python -m code.main --dry-run              # import check; no API calls
     python -m code.main --limit 5              # process only first N rows
 """
@@ -52,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--strategy",
-        choices=["strategy_a", "strategy_b"],
+        choices=["strategy_a", "strategy_b", "strategy_c"],
         default="strategy_b",
         help="Prompt strategy to use (default: strategy_b)",
     )

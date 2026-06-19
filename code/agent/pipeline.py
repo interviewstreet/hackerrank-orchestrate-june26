@@ -18,7 +18,7 @@ from code.agent.evidence import EvidenceLoader
 from code.agent.history import HistoryLoader
 from code.agent.media import load_row_media
 from code.agent.models import ClaimRow, OutputRow, RowStats
-from code.agent.prompt import STRATEGY_B, build_system_prompt, build_user_message
+from code.agent.prompt import STRATEGY_B, STRATEGY_C, build_system_prompt, build_user_message
 from code.agent.validator import validate_and_merge, zero_media_output
 from code.agent.vision_client import ModelCallError, VisionClient
 

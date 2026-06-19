@@ -7,6 +7,7 @@ from code.agent.models import ClaimRow, HistoryRecord, MediaFile
 from code.agent.prompt import (
     STRATEGY_A,
     STRATEGY_B,
+    STRATEGY_C,
     build_system_prompt,
     build_user_message,
 )
@@ -126,3 +127,63 @@ def test_strategy_a_excludes_calibration_guidance(claim, media_file):
 def test_strategy_b_calibration_version_constant_exists():
     from code.agent.prompt import STRATEGY_B_CALIBRATION_VERSION
     assert isinstance(STRATEGY_B_CALIBRATION_VERSION, str) and STRATEGY_B_CALIBRATION_VERSION
+
+
+def test_strategy_c_includes_calibration_guidance(claim, media_file):
+    """Strategy C must include the shared calibration guidance block."""
+    content = build_user_message(claim, [media_file], None, None, STRATEGY_C)
+    text = content[0]["text"]
+    assert "Calibration guidance" in text
+    assert "crack" in text
+    assert "glass_shatter" in text
+    assert "evidence_standard_met=true" in text
+    assert "severity" in text.lower()
+
+
+def test_strategy_c_excludes_history(claim, media_file):
+    """Strategy C must NOT include history text even when history is provided."""
+    history = HistoryRecord(
+        user_id="u1",
+        past_claim_count=3,
+        accept_claim=2,
+        manual_review_claim=1,
+        rejected_claim=0,
+        last_90_days_claim_count=2,
+        history_flags="none",
+        history_summary="Mostly accepted claims.",
+    )
+    content = build_user_message(claim, [media_file], history, None, STRATEGY_C)
+    text = content[0]["text"]
+    assert "User claim history" not in text
+    assert "Mostly accepted claims" not in text
+
+
+def test_strategy_c_excludes_evidence(claim, media_file):
+    """Strategy C must NOT include evidence rules even when evidence_text is provided."""
+    content = build_user_message(claim, [media_file], None, "evidence rules here", STRATEGY_C)
+    text = content[0]["text"]
+    assert "evidence rules here" not in text
+    assert "Minimum evidence requirements" not in text
+
+
+def test_strategy_c_calibration_version_constant_exists():
+    from code.agent.prompt import STRATEGY_C_CALIBRATION_VERSION
+    assert isinstance(STRATEGY_C_CALIBRATION_VERSION, str) and STRATEGY_C_CALIBRATION_VERSION
+
+
+def test_strategy_a_excludes_history(claim, media_file):
+    """Strategy A must NOT include history text."""
+    history = HistoryRecord(
+        user_id="u1",
+        past_claim_count=2,
+        accept_claim=1,
+        manual_review_claim=0,
+        rejected_claim=1,
+        last_90_days_claim_count=1,
+        history_flags="none",
+        history_summary="Two prior claims.",
+    )
+    content = build_user_message(claim, [media_file], history, None, STRATEGY_A)
+    text = content[0]["text"]
+    assert "User claim history" not in text
+    assert "Two prior claims" not in text
