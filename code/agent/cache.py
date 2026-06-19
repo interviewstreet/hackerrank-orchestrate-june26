@@ -26,6 +26,9 @@ _MEDIA_NORM_TAG = (                   # normalization pipeline parameters
     "avif=single_frame_ffmpeg;video=3_frame_evenly_spaced"
 )
 _DECODE_TAG = "temperature=0;max_tokens=1024;thinking=false"
+# Strategy B calibration guidance version — only enters Strategy B cache keys.
+# Bump when the calibration text in prompt.py changes; Strategy A keys are unaffected.
+_STRATEGY_B_CALIBRATION_VERSION = "v1"
 
 
 def make_cache_key(
@@ -49,6 +52,8 @@ def make_cache_key(
     h.update(_PROMPT_SCHEMA_VERSION.encode())
     h.update(_MEDIA_NORM_TAG.encode())
     h.update(_DECODE_TAG.encode())
+    if strategy == "strategy_b":
+        h.update(_STRATEGY_B_CALIBRATION_VERSION.encode())
     # Claim identity
     h.update(claim.user_id.encode())
     h.update(claim.claim_object.encode())

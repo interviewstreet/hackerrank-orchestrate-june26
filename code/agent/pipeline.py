@@ -41,10 +41,8 @@ def _failure_row(claim: ClaimRow, history, has_media: bool) -> OutputRow:
     valid_image reflects whether usable media existed (a transient API
     failure does not make images invalid).
     """
-    from code.agent.validator import _list_to_csv, _HISTORY_FLAG_TRIGGERS
-    risk_flags = ["manual_review_required"]
-    if history is not None and (history.flag_set & _HISTORY_FLAG_TRIGGERS):
-        risk_flags.append("user_history_risk")
+    from code.agent.validator import _list_to_csv, _merge_history_flags
+    risk_flags = _merge_history_flags(["manual_review_required"], history)
     return OutputRow(
         user_id=claim.user_id,
         image_paths=claim.image_paths,

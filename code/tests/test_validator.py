@@ -161,3 +161,59 @@ def test_zero_media_with_risk_history():
     hist = _history_with_flags("repeated_claim")
     row = zero_media_output(_claim(), hist)
     assert "user_history_risk" in row.risk_flags
+
+
+# --- Tests using actual dataset history_flags literal values ---
+
+def test_user_history_risk_literal_adds_both_flags():
+    """The literal 'user_history_risk' value from user_history.csv must trigger
+    both user_history_risk and manual_review_required in the output."""
+    hist = _history_with_flags("user_history_risk")
+    row = validate_and_merge(_raw_output(), _claim(), hist, ["img_1"])
+    assert "user_history_risk" in row.risk_flags
+    assert "manual_review_required" in row.risk_flags
+
+
+def test_user_history_risk_with_manual_review_both_present():
+    """'user_history_risk;manual_review_required' (common combo in dataset)."""
+    hist = _history_with_flags("user_history_risk;manual_review_required")
+    row = validate_and_merge(_raw_output(), _claim(), hist, ["img_1"])
+    assert "user_history_risk" in row.risk_flags
+    assert "manual_review_required" in row.risk_flags
+
+
+def test_manual_review_alone_no_user_history_risk():
+    """'manual_review_required' alone must add manual_review_required but NOT
+    user_history_risk — it is not a risk-trigger, only a review policy flag."""
+    hist = _history_with_flags("manual_review_required")
+    row = validate_and_merge(_raw_output(), _claim(), hist, ["img_1"])
+    assert "manual_review_required" in row.risk_flags
+    assert "user_history_risk" not in row.risk_flags
+
+
+def test_none_flags_with_high_count_no_merge():
+    """history_flags='none' with manual_review_claim > 0 must NOT add any flags.
+    The merge is driven entirely by history_flags, not by the numeric count."""
+    hist = HistoryRecord(
+        user_id="u1",
+        past_claim_count=5,
+        accept_claim=3,
+        manual_review_claim=1,   # positive count but flags='none'
+        rejected_claim=1,
+        last_90_days_claim_count=2,
+        history_flags="none",    # no flags in the literal value
+        history_summary="Regular user.",
+    )
+    row = validate_and_merge(_raw_output(), _claim(), hist, ["img_1"])
+    assert "user_history_risk" not in row.risk_flags
+    assert "manual_review_required" not in row.risk_flags
+
+
+def test_zero_media_with_manual_review_only_history():
+    """zero_media_output with manual_review_required-only history adds flag
+    without user_history_risk (same one-helper rule)."""
+    hist = _history_with_flags("manual_review_required")
+    row = zero_media_output(_claim(), hist)
+    assert "manual_review_required" in row.risk_flags
+    assert "user_history_risk" not in row.risk_flags
+    assert "damage_not_visible" in row.risk_flags

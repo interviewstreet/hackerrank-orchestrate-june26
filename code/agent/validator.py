@@ -71,25 +71,36 @@ def _list_to_csv(items: list[str]) -> str:
 # History flag injection
 # ---------------------------------------------------------------------------
 
+# Flags in history_flags that signal elevated risk — triggers user_history_risk
+# output and implies manual_review_required.  The literal dataset value is
+# "user_history_risk"; the other values are alternative/future encodings.
+# "manual_review_required" is intentionally excluded: it is a consequence of
+# risk triggers, not a trigger itself.
 _HISTORY_FLAG_TRIGGERS = frozenset({
-    "repeated_claim", "high_frequency", "suspicious_pattern",
-    "fraud_flag", "manual_review_required",
-})
-
-_HISTORY_MANUAL_REVIEW_TRIGGERS = frozenset({
-    "manual_review_required",
+    "user_history_risk",      # literal value used in dataset
+    "repeated_claim",
+    "high_frequency",
+    "suspicious_pattern",
+    "fraud_flag",
 })
 
 
 def _merge_history_flags(
     risk_flags: list[str], history: HistoryRecord | None
 ) -> list[str]:
-    """Deterministically merge history-derived flags into the VLM risk_flags list.
+    """Deterministically merge history-derived flags into any risk_flags list.
 
-    Rules (applied in order):
-    1. If history has any flag in _HISTORY_FLAG_TRIGGERS → add 'user_history_risk'.
-    2. If history explicitly carries 'manual_review_required' → add it.
-    3. Remove the sentinel 'none' whenever at least one real flag exists.
+    Shared helper used by validate_and_merge(), zero_media_output(), and the
+    model-failure row in pipeline.py so all paths follow identical rules:
+
+    1. If history.flag_set contains any _HISTORY_FLAG_TRIGGERS value:
+       add "user_history_risk" + "manual_review_required".
+    2. Else if "manual_review_required" is explicitly present in history.flag_set:
+       add "manual_review_required" only (no user_history_risk inferred).
+    3. Remove the sentinel "none" whenever at least one real flag exists.
+
+    Note: manual_review_claim count is intentionally NOT used — rows with
+    history_flags="none" and count > 0 are correctly labelled with no extra flags.
     """
     if history is None:
         return risk_flags
@@ -99,12 +110,12 @@ def _merge_history_flags(
     if history.flag_set & _HISTORY_FLAG_TRIGGERS:
         if "user_history_risk" not in flags:
             flags.append("user_history_risk")
-
-    if history.flag_set & _HISTORY_MANUAL_REVIEW_TRIGGERS:
+        if "manual_review_required" not in flags:
+            flags.append("manual_review_required")
+    elif "manual_review_required" in history.flag_set:
         if "manual_review_required" not in flags:
             flags.append("manual_review_required")
 
-    # Remove sentinel "none" when real flags are present
     real = [f for f in flags if f != "none"]
     return real if real else ["none"]
 
@@ -176,9 +187,7 @@ def validate_and_merge(
 
 def zero_media_output(claim: ClaimRow, history: HistoryRecord | None) -> OutputRow:
     """Short-circuit result when no usable frames exist for a row."""
-    risk_flags: list[str] = ["damage_not_visible"]
-    if history is not None and (history.flag_set & _HISTORY_FLAG_TRIGGERS):
-        risk_flags.append("user_history_risk")
+    risk_flags = _merge_history_flags(["damage_not_visible"], history)
     return OutputRow(
         user_id=claim.user_id,
         image_paths=claim.image_paths,

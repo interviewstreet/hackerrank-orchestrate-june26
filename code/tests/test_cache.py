@@ -4,7 +4,8 @@ import pytest
 from PIL import Image
 
 from code.agent.cache import (
-    CacheStore, make_cache_key, _PROMPT_SCHEMA_VERSION, _MEDIA_NORM_TAG,
+    CacheStore, make_cache_key,
+    _PROMPT_SCHEMA_VERSION, _MEDIA_NORM_TAG, _STRATEGY_B_CALIBRATION_VERSION,
 )
 from code.agent.models import ClaimRow, MediaFile, ModelOutput
 
@@ -158,6 +159,19 @@ def test_prompt_schema_version_constant_exists():
 
 def test_media_norm_tag_constant_exists():
     assert isinstance(_MEDIA_NORM_TAG, str) and _MEDIA_NORM_TAG
+
+
+def test_strategy_b_calibration_version_constant_exists():
+    assert isinstance(_STRATEGY_B_CALIBRATION_VERSION, str) and _STRATEGY_B_CALIBRATION_VERSION
+
+
+def test_cache_key_strategy_b_differs_from_a_beyond_strategy_string():
+    """Strategy B key includes _STRATEGY_B_CALIBRATION_VERSION; A does not.
+    They must differ even if all other inputs are identical."""
+    c = _claim()
+    k_a = make_cache_key("qwen", "qwen3.5-plus", "strategy_a", c, None, None, [])
+    k_b = make_cache_key("qwen", "qwen3.5-plus", "strategy_b", c, None, None, [])
+    assert k_a != k_b
 
 
 # --- Endpoint invalidation ---

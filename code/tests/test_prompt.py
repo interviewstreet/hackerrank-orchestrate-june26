@@ -102,3 +102,27 @@ def test_user_message_strategy_a_no_evidence(claim, media_file):
     # Strategy A must NOT include evidence text
     text = content[0]["text"]
     assert "rules text" not in text
+
+
+def test_strategy_b_includes_calibration_guidance(claim, media_file):
+    """Strategy B must include the calibration guidance block."""
+    content = build_user_message(claim, [media_file], None, None, STRATEGY_B)
+    text = content[0]["text"]
+    assert "Calibration guidance" in text
+    # Core calibration rules must be present
+    assert "crack" in text
+    assert "glass_shatter" in text
+    assert "severity" in text.lower()
+    assert "evidence_standard_met=true" in text
+
+
+def test_strategy_a_excludes_calibration_guidance(claim, media_file):
+    """Strategy A must NOT include the Strategy B calibration block."""
+    content = build_user_message(claim, [media_file], None, None, STRATEGY_A)
+    text = content[0]["text"]
+    assert "Calibration guidance" not in text
+
+
+def test_strategy_b_calibration_version_constant_exists():
+    from code.agent.prompt import STRATEGY_B_CALIBRATION_VERSION
+    assert isinstance(STRATEGY_B_CALIBRATION_VERSION, str) and STRATEGY_B_CALIBRATION_VERSION
