@@ -1,1 +1,2 @@
 @AGENTS.md
+@MY_RULES.md
