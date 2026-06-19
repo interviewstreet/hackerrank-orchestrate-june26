@@ -100,7 +100,10 @@ def _coerce_bool(v: object, default: bool = False) -> bool:
             return False
         return default
     if isinstance(v, (int, float)):
-        return bool(v)
+        # Only accept 0 and 1 — any other number (2, -1, 0.5) is ambiguous.
+        if v in (0, 1, 0.0, 1.0):
+            return v != 0
+        return default
     return default
 
 
@@ -153,6 +156,10 @@ class VisionClient(ABC):
     @abstractmethod
     def model(self) -> str: ...
 
+    @property
+    @abstractmethod
+    def base_url(self) -> str: ...
+
 
 # ---------------------------------------------------------------------------
 # OpenAI-compatible adapter (Qwen/dashscope-intl primary)
@@ -180,6 +187,7 @@ class OpenAICompatVisionClient(VisionClient):
         base_url = os.environ.get("OPENAI_BASE_URL") or _DASHSCOPE_INTL_BASE_URL
 
         self._model = model or os.environ.get("VISION_MODEL", "qwen3.5-plus")
+        self._base_url = base_url
         self._client = OpenAI(api_key=api_key, base_url=base_url)
         self._max_retries = max_retries
         self._enable_thinking = enable_thinking
@@ -192,6 +200,10 @@ class OpenAICompatVisionClient(VisionClient):
     @property
     def model(self) -> str:
         return self._model
+
+    @property
+    def base_url(self) -> str:
+        return self._base_url
 
     def call(
         self,
@@ -207,6 +219,10 @@ class OpenAICompatVisionClient(VisionClient):
         if not self._enable_thinking:
             extra_body["enable_thinking"] = False
 
+        # Set identity before any attempt so stats are usable even on failure.
+        stats.provider = self._provider_name
+        stats.model = self._model
+
         last_exc: Exception | None = None
         for attempt in range(self._max_retries + 1):
             stats.api_attempts += 1   # count every SDK call including retries
@@ -218,6 +234,7 @@ class OpenAICompatVisionClient(VisionClient):
                     response_format={"type": "json_object"},
                     temperature=0,
                     max_tokens=1024,
+                    timeout=60,
                     extra_body=extra_body or None,
                 )
                 elapsed_ms = (time.monotonic() - t0) * 1000
@@ -227,8 +244,6 @@ class OpenAICompatVisionClient(VisionClient):
                 stats.input_tokens += in_tok
                 stats.output_tokens += out_tok
                 stats.latency_ms += elapsed_ms
-                stats.provider = self._provider_name
-                stats.model = self._model
 
                 if in_tok > 0 or out_tok > 0:
                     est_in, est_out = _estimated_cost(self._model, in_tok, out_tok)

@@ -1,16 +1,15 @@
 """Content-addressed disk cache for VLM responses.
 
 Cache key = SHA256 of:
-  provider, model, strategy, claim.user_id, claim.claim_object,
-  claim.user_claim, claim.image_paths (original), evidence_text,
-  history_text, image_id + frame_label + frame_bytes per frame,
-  decoding settings (temperature=0, max_tokens=1024, thinking=False).
-
-This ensures that identical pixels presented under different image IDs
-(which would produce different supporting_image_ids in the output) never
-share a cached raw model result.
+  endpoint, provider, model, strategy,
+  prompt/schema version, media-normalization tag, decode settings,
+  claim.user_id, claim.claim_object, claim.user_claim, claim.image_paths,
+  evidence_text, history_text,
+  per-frame: image_id + label + bytes (with fallback label for unlabeled frames).
 
 Stored as JSON files under code/.cache/ — excluded from git via .gitignore.
+Bump _PROMPT_SCHEMA_VERSION whenever the system prompt template or output
+schema changes.  Bump _MEDIA_NORM_TAG when normalization parameters change.
 """
 from __future__ import annotations
 
@@ -20,7 +19,12 @@ from pathlib import Path
 
 from code.agent.models import ClaimRow, MediaFile, ModelOutput
 
-# Decoding settings that affect the VLM response — must be part of the key.
+# Version constants — bump these when the corresponding component changes.
+_PROMPT_SCHEMA_VERSION = "v1"         # system prompt template + JSON schema version
+_MEDIA_NORM_TAG = (                   # normalization pipeline parameters
+    "max_long_edge=1024;jpeg_quality=85;"
+    "avif=single_frame_ffmpeg;video=3_frame_evenly_spaced"
+)
 _DECODE_TAG = "temperature=0;max_tokens=1024;thinking=false"
 
 
@@ -32,26 +36,38 @@ def make_cache_key(
     evidence_text: str | None,
     history_text: str | None,
     media_files: list[MediaFile],
+    endpoint: str = "",
 ) -> str:
     """Return a hex SHA256 string that uniquely identifies one model call."""
     h = hashlib.sha256()
+    # Provider / model / endpoint identity
+    h.update(endpoint.encode())
     h.update(provider.encode())
     h.update(model.encode())
+    # Version tags
     h.update(strategy.encode())
+    h.update(_PROMPT_SCHEMA_VERSION.encode())
+    h.update(_MEDIA_NORM_TAG.encode())
     h.update(_DECODE_TAG.encode())
     # Claim identity
     h.update(claim.user_id.encode())
     h.update(claim.claim_object.encode())
     h.update(claim.user_claim.encode())
-    h.update(claim.image_paths.encode())  # original semicolon-separated paths
+    h.update(claim.image_paths.encode())   # original semicolon-separated paths
     # Context text
     h.update((evidence_text or "").encode())
     h.update((history_text or "").encode())
-    # Media: image_id + frame_label + frame_bytes so same pixels under
-    # different IDs get different cache keys.
+    # Media: image_id + per-frame (label + bytes).
+    # Uses enumerate + fallback label so unlabeled frames are never silently
+    # omitted from the key (zip would stop at the shorter list).
     for mf in media_files:
         h.update(mf.image_id.encode())
-        for label, frame in zip(mf.frame_labels, mf.usable_frames):
+        for i, frame in enumerate(mf.usable_frames):
+            label = (
+                mf.frame_labels[i]
+                if i < len(mf.frame_labels)
+                else f"{mf.image_id},frame{i},unlabeled"
+            )
             h.update(label.encode())
             h.update(frame)
     return h.hexdigest()

@@ -104,10 +104,11 @@ def test_full_dataset_audit(claims_csv, sample_csv, dataset_root):
 
         mf_list = load_row_media([rel], dataset_root)
         for mf in mf_list:
-            if not mf.has_visual_content and fmt != "MP4":
+            needs_ffmpeg = fmt in ("AVIF", "MP4")
+            if not mf.has_visual_content and needs_ffmpeg and not _ffmpeg_available():
+                pass  # expected: AVIF/video containers need FFmpeg
+            elif not mf.has_visual_content and not needs_ffmpeg:
                 no_frames.append(rel)
-            elif not mf.has_visual_content and fmt == "MP4" and not _ffmpeg_available():
-                pass  # expected: video needs FFmpeg
 
     # Report
     print("\n=== Dataset Media Audit ===")
@@ -117,39 +118,45 @@ def test_full_dataset_audit(claims_csv, sample_csv, dataset_root):
     print(f"  No frames (non-video): {len(no_frames)}")
 
     assert not missing, f"Files referenced in CSV but not found on disk: {missing}"
-    # Only known formats
-    unknown = [f for f in format_counts if f not in ("JPEG", "PNG", "WEBP", "MP4")]
+    # Only known formats — AVIF is now detected separately from MP4
+    unknown = [f for f in format_counts if f not in ("JPEG", "PNG", "WEBP", "MP4", "AVIF")]
     assert not unknown, f"Unexpected formats found: {unknown}"
 
 
 # ---------------------------------------------------------------------------
-# P0.2 — FFmpeg integration: all MP4 files in dataset
+# P0.2 — FFmpeg integration: all AVIF/ISOBMFF files in dataset
 # ---------------------------------------------------------------------------
 
 def test_all_mp4_files_produce_frames(dataset_root):
-    """Every MP4 file in the dataset must produce >= 1 valid JPEG frame."""
+    """Every AVIF/ISOBMFF file in the dataset must produce >= 1 valid JPEG frame.
+
+    The 8 ISOBMFF-container files in this dataset are AVIF single-image files
+    (ftyp major brand 'avif'), not MP4 videos.  They are detected as 'AVIF'
+    by detect_format().  This test collects both AVIF and MP4 to stay forward-
+    compatible if real video files appear in future datasets.
+    """
     if not _ffmpeg_available():
         pytest.skip("FFmpeg not available — install to run video tests")
 
     images_root = dataset_root / "images"
-    mp4_files = []
+    isobmff_files = []
     for f in images_root.rglob("*.jpg"):
         fmt = _detect_file(f)
-        if fmt == "MP4":
-            mp4_files.append(f)
+        if fmt in ("AVIF", "MP4"):
+            isobmff_files.append((f, fmt))
 
-    assert mp4_files, "Expected to find MP4 files in dataset"
+    assert isobmff_files, "Expected to find AVIF/MP4 files in dataset"
 
     results = []
-    for path in mp4_files:
+    for path, fmt in isobmff_files:
         frames = extract_video_frames(path, n_frames=3)
-        results.append((path, len(frames)))
-        assert frames, f"No frames extracted from {path}"
+        results.append((path, fmt, len(frames)))
+        assert frames, f"No frames extracted from {path} (format={fmt})"
         for fb in frames:
             img = Image.open(io.BytesIO(fb))
             assert img.format == "JPEG"
             assert max(img.size) <= 1024, f"Frame too large from {path}: {img.size}"
 
-    print(f"\n=== FFmpeg Video Audit ({len(results)} files) ===")
-    for path, n in results:
-        print(f"  {path.relative_to(dataset_root)}: {n} frame(s)")
+    print(f"\n=== FFmpeg AVIF/MP4 Audit ({len(results)} files) ===")
+    for path, fmt, n in results:
+        print(f"  {path.relative_to(dataset_root)}: {n} frame(s)  [{fmt}]")

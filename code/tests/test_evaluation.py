@@ -65,22 +65,41 @@ def test_align_matching_rows():
     assert len(aligned_gt) == 2
 
 
-def test_align_missing_prediction_skips_row(capsys):
+def test_align_length_mismatch_raises():
+    """Strict positional alignment: length mismatch must raise ValueError."""
     gt = [_sample_gt_row("u1"), _sample_gt_row("u2")]
     pred = [_sample_gt_row("u1")]
-    aligned_pred, aligned_gt = _align(pred, gt)
-    assert len(aligned_pred) == 1
-    captured = capsys.readouterr()
-    assert "u2" in captured.err
+    with pytest.raises(ValueError, match="Row count mismatch"):
+        _align(pred, gt)
 
 
-def test_align_extra_prediction_warns(capsys):
+def test_align_extra_prediction_raises():
+    """Extra prediction rows that change the length must raise ValueError."""
     gt = [_sample_gt_row("u1")]
     pred = [_sample_gt_row("u1"), _sample_gt_row("u99")]
+    with pytest.raises(ValueError, match="Row count mismatch"):
+        _align(pred, gt)
+
+
+def test_align_user_id_mismatch_raises():
+    """Same length but different user_id at a position must raise ValueError."""
+    gt = [_sample_gt_row("u1"), _sample_gt_row("u2")]
+    pred = [_sample_gt_row("u1"), _sample_gt_row("u3")]  # u3 ≠ u2
+    with pytest.raises(ValueError, match="user_id mismatch"):
+        _align(pred, gt)
+
+
+def test_align_duplicate_user_ids_aligned_by_position():
+    """Duplicate user_ids in both pred and gt are correctly aligned positionally."""
+    gt = [_sample_gt_row("u_dup"), _sample_gt_row("u_dup")]
+    pred = [
+        _sample_gt_row("u_dup", claim_status="supported"),
+        _sample_gt_row("u_dup", claim_status="contradicted"),
+    ]
     aligned_pred, aligned_gt = _align(pred, gt)
-    assert len(aligned_pred) == 1
-    captured = capsys.readouterr()
-    assert "u99" in captured.err
+    assert len(aligned_pred) == 2
+    assert aligned_pred[0]["claim_status"] == "supported"
+    assert aligned_pred[1]["claim_status"] == "contradicted"
 
 
 # --- compute_metrics end-to-end ---

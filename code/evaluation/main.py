@@ -67,34 +67,26 @@ def _extract_ground_truth(rows: list[dict[str, str]]) -> list[dict[str, str]]:
 
 
 def _align(predictions: list[dict], ground_truth: list[dict]) -> tuple[list, list]:
-    """Align by user_id order from ground truth; warn on missing/duplicate."""
-    gt_by_uid: dict[str, dict] = {}
-    for row in ground_truth:
-        uid = row["user_id"]
-        if uid in gt_by_uid:
-            print(f"WARNING: duplicate user_id in ground truth: {uid}", file=sys.stderr)
-        gt_by_uid[uid] = row
+    """Strict positional alignment — same length and same user_id order required.
 
-    pred_by_uid: dict[str, dict] = {}
-    for row in predictions:
-        uid = row["user_id"]
-        if uid in pred_by_uid:
-            print(f"WARNING: duplicate user_id in predictions: {uid}", file=sys.stderr)
-        pred_by_uid[uid] = row
-
-    aligned_gt, aligned_pred = [], []
-    for uid, gt_row in gt_by_uid.items():
-        if uid not in pred_by_uid:
-            print(f"WARNING: user_id {uid!r} in ground truth but not in predictions", file=sys.stderr)
-            continue
-        aligned_gt.append(gt_row)
-        aligned_pred.append(pred_by_uid[uid])
-
-    for uid in pred_by_uid:
-        if uid not in gt_by_uid:
-            print(f"WARNING: user_id {uid!r} in predictions but not in ground truth", file=sys.stderr)
-
-    return aligned_pred, aligned_gt
+    Fails loudly on length mismatch or user_id mismatch at any position.
+    This correctly handles rows with repeated user_ids (e.g. user_004 appears
+    twice in test data) that a dict-based approach would silently drop.
+    """
+    if len(predictions) != len(ground_truth):
+        raise ValueError(
+            f"Row count mismatch: predictions has {len(predictions)} rows, "
+            f"ground truth has {len(ground_truth)} rows. "
+            "Ensure inference was run on the exact same claims CSV as ground truth."
+        )
+    for i, (pred, gt) in enumerate(zip(predictions, ground_truth)):
+        if pred["user_id"] != gt["user_id"]:
+            raise ValueError(
+                f"Row {i}: user_id mismatch — predictions has {pred['user_id']!r}, "
+                f"ground truth has {gt['user_id']!r}. "
+                "Output CSV must preserve the same row order as the input claims CSV."
+            )
+    return predictions, ground_truth
 
 
 def _evaluate_one(strategy: str, gt_path: Path) -> None:

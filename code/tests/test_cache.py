@@ -3,7 +3,9 @@ import io
 import pytest
 from PIL import Image
 
-from code.agent.cache import CacheStore, make_cache_key
+from code.agent.cache import (
+    CacheStore, make_cache_key, _PROMPT_SCHEMA_VERSION, _MEDIA_NORM_TAG,
+)
 from code.agent.models import ClaimRow, MediaFile, ModelOutput
 
 
@@ -146,3 +148,67 @@ def test_cache_store_corrupted_file_returns_none(tmp_path):
     p = store._path("badkey")
     p.write_text("not valid json", encoding="utf-8")
     assert store.get("badkey") is None
+
+
+# --- Version constants exist and are non-empty ---
+
+def test_prompt_schema_version_constant_exists():
+    assert isinstance(_PROMPT_SCHEMA_VERSION, str) and _PROMPT_SCHEMA_VERSION
+
+
+def test_media_norm_tag_constant_exists():
+    assert isinstance(_MEDIA_NORM_TAG, str) and _MEDIA_NORM_TAG
+
+
+# --- Endpoint invalidation ---
+
+def test_cache_key_changes_with_endpoint():
+    """Different endpoint → different key (avoids cache poisoning across providers)."""
+    k1 = make_cache_key(
+        "qwen", "qwen3.5-plus", "strategy_a", _claim(), None, None, [],
+        endpoint="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    )
+    k2 = make_cache_key(
+        "qwen", "qwen3.5-plus", "strategy_a", _claim(), None, None, [],
+        endpoint="https://other-provider.example.com/v1",
+    )
+    assert k1 != k2
+
+
+# --- Unlabeled frame fallback ---
+
+def test_cache_key_unlabeled_frame_included():
+    """A frame with no matching label is still included in the key (no silent drop)."""
+    same_bytes = _jpeg_bytes()
+    # Two frames but only one label — second frame uses fallback label
+    mf_partial = MediaFile(
+        original_path="img_1.jpg", image_id="img_1",
+        actual_format="JPEG", usable_frames=[same_bytes, same_bytes],
+        frame_labels=["img_1, frame 0/2, format JPEG"],  # only 1 label for 2 frames
+    )
+    mf_full = MediaFile(
+        original_path="img_1.jpg", image_id="img_1",
+        actual_format="JPEG", usable_frames=[same_bytes, same_bytes],
+        frame_labels=["img_1, frame 0/2, format JPEG", "img_1, frame 1/2, format JPEG"],
+    )
+    # Different label for second frame → different key
+    k_partial = make_cache_key("qwen", "qwen3.5-plus", "strategy_a", _claim(), None, None, [mf_partial])
+    k_full = make_cache_key("qwen", "qwen3.5-plus", "strategy_a", _claim(), None, None, [mf_full])
+    assert k_partial != k_full
+
+
+def test_cache_key_unlabeled_vs_zero_frames():
+    """Partially-labeled 2-frame key differs from 0-frame key (frame bytes are included)."""
+    same_bytes = _jpeg_bytes()
+    mf_partial = MediaFile(
+        original_path="img_1.jpg", image_id="img_1",
+        actual_format="JPEG", usable_frames=[same_bytes, same_bytes],
+        frame_labels=["img_1, frame 0/2, format JPEG"],
+    )
+    mf_empty = MediaFile(
+        original_path="img_1.jpg", image_id="img_1",
+        actual_format="JPEG", usable_frames=[], frame_labels=[],
+    )
+    k_partial = make_cache_key("qwen", "qwen3.5-plus", "strategy_a", _claim(), None, None, [mf_partial])
+    k_empty = make_cache_key("qwen", "qwen3.5-plus", "strategy_a", _claim(), None, None, [mf_empty])
+    assert k_partial != k_empty

@@ -30,7 +30,8 @@ def _history_text(claim: ClaimRow, history_loader: HistoryLoader) -> str | None:
     return (
         f"summary={h.history_summary}; flags={h.history_flags}; "
         f"past={h.past_claim_count}; accepted={h.accept_claim}; "
-        f"rejected={h.rejected_claim}; last90={h.last_90_days_claim_count}"
+        f"rejected={h.rejected_claim}; last90={h.last_90_days_claim_count}; "
+        f"manual_review={h.manual_review_claim}"
     )
 
 
@@ -104,6 +105,7 @@ def run_row(
         evidence_text=evidence_text,
         history_text=hist_text,
         media_files=media_files,
+        endpoint=client.base_url,
     )
     cached = cache.get(key)
     if cached is not None:

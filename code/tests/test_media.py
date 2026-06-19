@@ -164,9 +164,10 @@ def test_load_mp4_file_extracts_frames(images_root):
         pytest.skip("FFmpeg not available")
     mp4_paths = _find_mp4_paths(images_root)
     if not mp4_paths:
-        pytest.skip("No MP4 files in dataset")
+        pytest.skip("No ISOBMFF files in dataset")
     mf = load_media_file(mp4_paths[0])
-    assert mf.actual_format == "MP4"
+    # Dataset ISOBMFF files are AVIF single-image containers, not video MP4s.
+    assert mf.actual_format in ("AVIF", "MP4")
     assert mf.has_visual_content
     assert len(mf.usable_frames) >= 1
 

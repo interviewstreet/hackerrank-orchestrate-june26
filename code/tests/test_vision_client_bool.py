@@ -41,6 +41,19 @@ def test_coerce_bool_unknown_returns_default(value):
     assert _coerce_bool(value, default=True) is True
 
 
+@pytest.mark.parametrize("value", [
+    2,      # nonzero int other than 1
+    -1,     # negative int
+    0.5,    # float that is not 0.0 or 1.0
+    2.0,    # float > 1
+    -0.1,   # negative float
+])
+def test_coerce_bool_ambiguous_numeric_returns_default(value):
+    """Only 0 and 1 (int/float) are recognized; other numbers return default."""
+    assert _coerce_bool(value, default=False) is False
+    assert _coerce_bool(value, default=True) is True
+
+
 def test_coerce_bool_string_false_is_not_truthy():
     """The critical regression: bool('false') is True; _coerce_bool must return False."""
     assert _coerce_bool("false") is False

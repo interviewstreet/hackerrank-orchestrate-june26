@@ -11,8 +11,9 @@ Alibaba Cloud DashScope International.
 ### 1. Python environment
 
 ```powershell
-# From repo root (D:\HackerRank\orchestrate-june-2026\)
+# From D:\HackerRank\orchestrate-june-2026\ (one level above challenge/)
 .\.venv\Scripts\Activate.ps1
+# Then from challenge/
 pip install -r code/requirements.txt
 ```
 
@@ -28,15 +29,16 @@ DASHSCOPE_API_KEY=sk-your-actual-key
 
 ### 3. FFmpeg (required for video files)
 
-8 of the 111 submitted files are MP4 videos disguised as `.jpg`.
-FFmpeg 8.x is required to extract frames from them.
+8 of the 111 submitted files are AVIF images disguised as `.jpg`.
+FFmpeg 8.x is required to decode them (they are single-frame ISOBMFF containers
+with `ftyp` major brand `avif`, not video streams).
 
 ```powershell
 # Verify
 ffmpeg -version
 ```
 
-Without FFmpeg, video files return zero frames and take the
+Without FFmpeg, AVIF files return zero frames and take the
 `not_enough_information` deterministic path (no API call).
 
 ---
@@ -48,7 +50,7 @@ All commands run from `challenge/` with the venv active.
 ### Offline checks (no API key needed)
 
 ```powershell
-# Run 62 offline tests
+# Run offline tests
 python -m pytest code/tests/ -v
 
 # Import smoke test (no API calls)
@@ -58,7 +60,7 @@ python -m code.main --dry-run
 python -m pytest code/tests/test_media_audit.py -v -s
 ```
 
-### Sample evaluation (20 rows, costs ~$0.02 per strategy)
+### Sample evaluation (20 rows)
 
 ```powershell
 # Strategy A (minimal prompt — baseline)
@@ -77,7 +79,7 @@ python -m code.main --strategy strategy_b `
 python -m code.evaluation.main --strategy strategy_b
 ```
 
-### Full inference (44 rows, costs ~$0.05 per strategy)
+### Full inference (44 rows)
 
 ```powershell
 python -m code.main --strategy strategy_b
@@ -132,12 +134,24 @@ Delete `code/.cache/` to force a full re-run.
 
 ## Packaging
 
+Stage only the source files — exclude cache, secrets, and bytecode:
+
 ```powershell
 # From challenge/
-Compress-Archive -Path code/ -DestinationPath code.zip `
-    -CompressionLevel Optimal
-# Verify size
+$staging = "code_staging"
+New-Item -ItemType Directory -Force $staging | Out-Null
+Copy-Item code\agent       $staging\agent       -Recurse
+Copy-Item code\evaluation  $staging\evaluation  -Recurse
+Copy-Item code\requirements.txt $staging\requirements.txt
+Copy-Item code\main.py     $staging\main.py     -ErrorAction SilentlyContinue
+# Remove any __pycache__ trees that crept in
+Get-ChildItem $staging -Filter __pycache__ -Recurse -Directory |
+    Remove-Item -Recurse -Force
+# Compress
+Compress-Archive -Path $staging\* -DestinationPath code.zip -CompressionLevel Optimal
+Remove-Item $staging -Recurse -Force
 (Get-Item code.zip).Length / 1MB
 ```
 
-`code.zip` is gitignored. Do not include `.env`, `.cache/`, or `__pycache__`.
+`code.zip` is gitignored. The staging step ensures `.env`, `code/.cache/`, and
+`__pycache__` are never bundled.

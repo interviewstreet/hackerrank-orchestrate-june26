@@ -28,15 +28,24 @@ FFMPEG_N_FRAMES = 3  # representative frames extracted per video file
 # ---------------------------------------------------------------------------
 
 def detect_format(header: bytes) -> str:
-    """Identify actual file format from first 12 bytes."""
+    """Identify actual file format from first 12 bytes.
+
+    Returns one of: JPEG, PNG, WEBP, AVIF, MP4, UNKNOWN.
+    AVIF covers ISOBMFF containers with ftyp major brand avif/avis (single-image
+    AV1 Image File Format).  MP4 covers all other ftyp-based containers and
+    common QuickTime box types.
+    """
     if header[:2] == b"\xff\xd8":
         return "JPEG"
     if header[:8] == b"\x89PNG\r\n\x1a\n":
         return "PNG"
     if header[:4] == b"RIFF" and header[8:12] == b"WEBP":
         return "WEBP"
-    # MP4/MOV: 4-byte box size + 'ftyp' or common QuickTime atoms
     if header[4:8] == b"ftyp":
+        # Distinguish AVIF (single-image) from video/general MP4
+        brand = header[8:12]
+        if brand in (b"avif", b"avis"):
+            return "AVIF"
         return "MP4"
     if header[4:8] in (b"moov", b"mdat", b"free", b"wide"):
         return "MP4"
@@ -198,6 +207,18 @@ def load_media_file(path: Path) -> MediaFile:
                 usable_frames=[],
                 frame_labels=[],
             )
+
+    elif fmt == "AVIF":
+        # AVIF: single-image AV1 container — extract exactly one frame via FFmpeg.
+        frames = _extract_single_frame(path, MAX_LONG_EDGE) if _ffmpeg_available() else []
+        labels = [f"{image_id}, frame 0/1, format AVIF"] if frames else []
+        return MediaFile(
+            original_path=str(path),
+            image_id=image_id,
+            actual_format=fmt,
+            usable_frames=frames,
+            frame_labels=labels,
+        )
 
     elif fmt == "MP4":
         frames = extract_video_frames(path)

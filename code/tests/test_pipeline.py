@@ -24,6 +24,7 @@ def _mock_client(output: ModelOutput | None, fail: bool = False) -> VisionClient
     client = MagicMock(spec=VisionClient)
     client.provider = "qwen"
     client.model = "qwen3.5-plus"
+    client.base_url = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
 
     def fake_call(system_prompt, user_content, stats):
         stats.api_attempts += 1
