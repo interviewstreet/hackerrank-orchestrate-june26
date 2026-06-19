@@ -221,13 +221,26 @@ def _is_avif(data: bytes) -> bool:
     return len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] == b"avif"
 
 
+def _is_png(data: bytes) -> bool:
+    """Detect PNG by its 8-byte magic signature."""
+    return data[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def _is_webp(data: bytes) -> bool:
+    """Detect WebP by RIFF....WEBP header."""
+    return data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+
+
 def _prepare_image(path: str) -> tuple[str, str]:
     """Return (media_type, base64_data) ready to send to the Anthropic API.
 
-    AVIF files are common in this dataset despite carrying a .jpg extension.
-    The Anthropic API does not accept AVIF, so any AVIF image is converted to
-    JPEG via Pillow before encoding. All other formats are passed through using
-    extension-based media type detection.
+    Several images in this dataset carry a .jpg extension but are actually AVIF,
+    PNG, or WebP. Magic-byte detection overrides the extension so the API receives
+    the correct media type:
+    - AVIF: not accepted by the API, converted to JPEG via Pillow.
+    - PNG:  accepted natively, sent as image/png regardless of extension.
+    - WebP: accepted natively, sent as image/webp regardless of extension.
+    - Everything else: extension-based detection.
     """
     raw = Path(path).read_bytes()
     if _is_avif(raw):
@@ -236,6 +249,10 @@ def _prepare_image(path: str) -> tuple[str, str]:
         buf = io.BytesIO()
         Image.open(io.BytesIO(raw)).convert("RGB").save(buf, format="JPEG")
         return "image/jpeg", base64.standard_b64encode(buf.getvalue()).decode("ascii")
+    if _is_png(raw):
+        return "image/png", base64.standard_b64encode(raw).decode("ascii")
+    if _is_webp(raw):
+        return "image/webp", base64.standard_b64encode(raw).decode("ascii")
     return _media_type(path), base64.standard_b64encode(raw).decode("ascii")
 
 
