@@ -1,12 +1,16 @@
 """Deterministic post-processing: enum enforcement, history flag merge,
-supporting_image_ids subset validation, none-normalization.
+supporting_image_ids subset validation, verdict consistency, none-normalization.
 
 Rules applied in order:
 1. Clamp all string fields to their allowed enum (default to safest value).
 2. Merge history-derived risk flags from HistoryRecord into risk_flags.
 3. Strip any supporting_image_ids that are not in the submitted image ID set;
    fall back to ["none"] if all are stripped.
-4. Normalize "none"-like values to the string "none" (single-element list).
+4. Verdict consistency:
+   - contradicted: force evidence_standard_met=True; preserve valid supporting IDs
+     or fall back to submitted IDs (never None — the image set grounds the contradiction).
+   - supported with valid_image=False: downgrade to not_enough_information, clear IDs.
+   - All other valid_image=False cases: force evidence_standard_met=False, clear IDs.
 5. Build the final OutputRow with all 14 string columns.
 """
 from __future__ import annotations
@@ -153,14 +157,33 @@ def validate_and_merge(
     ]
     supporting_image_ids = filtered_ids if filtered_ids else ["none"]
 
-    # 4. Propagate: if no valid images, force safe values
+    # 4. Verdict consistency and valid-image safety
     valid_image = raw.valid_image
     evidence_standard_met = raw.evidence_standard_met
-    if not valid_image:
-        evidence_standard_met = False
-        if claim_status == "supported":
-            claim_status = "not_enough_information"
-        supporting_image_ids = ["none"]
+    if claim_status == "contradicted":
+        # A definite contradiction proves the evidence was sufficient to reach a verdict.
+        evidence_standard_met = True
+        # Preserve valid model-supplied IDs; fall back to submitted IDs when none passed
+        # validation (the image set itself grounds the contradiction).
+        if not filtered_ids:
+            seen_ids: set[str] = set()
+            fallback_ids: list[str] = []
+            for sid in submitted_image_ids:
+                if sid not in seen_ids:
+                    seen_ids.add(sid)
+                    fallback_ids.append(sid)
+            supporting_image_ids = fallback_ids if fallback_ids else ["none"]
+        else:
+            supporting_image_ids = filtered_ids
+        # valid_image unchanged — wrong-object/non-original images may be invalid for
+        # supporting a claim while still providing grounds for contradiction.
+    else:
+        # For supported / NEI: apply valid-image safety checks
+        if not valid_image:
+            evidence_standard_met = False
+            if claim_status == "supported":
+                claim_status = "not_enough_information"
+            supporting_image_ids = ["none"]
 
     # 5. Build final OutputRow
     return OutputRow(

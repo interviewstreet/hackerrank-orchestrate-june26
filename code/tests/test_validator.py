@@ -148,6 +148,75 @@ def test_invalid_image_forces_not_enough_information():
     assert row.evidence_standard_met == "false"
 
 
+# --- contradicted-verdict consistency ---
+
+def test_contradicted_valid_false_raw_id_preserved():
+    """contradicted + valid_image=False + model supplies a valid submitted ID
+    → ID preserved, evidence_standard_met=True, valid_image stays false."""
+    raw = _raw_output(valid_image=False, claim_status="contradicted", supporting_image_ids=["img_1"])
+    row = validate_and_merge(raw, _claim(), None, ["img_1"])
+    assert row.claim_status == "contradicted"
+    assert row.evidence_standard_met == "true"
+    assert row.supporting_image_ids == "img_1"
+    assert row.valid_image == "false"
+
+
+def test_contradicted_valid_false_no_id_falls_back_to_submitted():
+    """contradicted + valid_image=False + model ID not in submitted set
+    → fallback to submitted IDs (ordered, deduped), evidence_standard_met=True."""
+    raw = _raw_output(valid_image=False, claim_status="contradicted", supporting_image_ids=["img_99"])
+    row = validate_and_merge(raw, _claim(), None, ["img_1", "img_2"])
+    assert row.claim_status == "contradicted"
+    assert row.evidence_standard_met == "true"
+    assert row.supporting_image_ids == "img_1;img_2"
+    assert row.valid_image == "false"
+
+
+def test_contradicted_valid_true_no_id_falls_back_to_submitted():
+    """contradicted + valid_image=True + model ID not in submitted set
+    → fallback to all submitted IDs, evidence_standard_met=True."""
+    raw = _raw_output(valid_image=True, claim_status="contradicted", supporting_image_ids=["img_99"])
+    row = validate_and_merge(raw, _claim(), None, ["img_1"])
+    assert row.claim_status == "contradicted"
+    assert row.evidence_standard_met == "true"
+    assert row.supporting_image_ids == "img_1"
+
+
+def test_contradicted_evidence_forced_true_even_when_model_says_false():
+    """contradicted + model says evidence_standard_met=False → validator overrides to True."""
+    raw = _raw_output(
+        claim_status="contradicted",
+        evidence_standard_met=False,
+        supporting_image_ids=["img_1"],
+    )
+    row = validate_and_merge(raw, _claim(), None, ["img_1"])
+    assert row.evidence_standard_met == "true"
+
+
+def test_contradicted_unsubmitted_id_stripped_fallback_to_submitted():
+    """contradicted + model mixes valid and unsubmitted IDs
+    → unsubmitted stripped, only valid IDs preserved; no fallback needed."""
+    raw = _raw_output(
+        claim_status="contradicted",
+        supporting_image_ids=["img_1", "img_99"],
+    )
+    row = validate_and_merge(raw, _claim(), None, ["img_1"])
+    assert "img_99" not in row.supporting_image_ids
+    assert row.supporting_image_ids == "img_1"
+    assert row.evidence_standard_met == "true"
+
+
+def test_contradicted_fallback_deduplicates_submitted_ids():
+    """contradicted fallback deduplicates submitted IDs and preserves order."""
+    raw = _raw_output(
+        claim_status="contradicted",
+        supporting_image_ids=["img_99"],
+    )
+    row = validate_and_merge(raw, _claim(), None, ["img_1", "img_2", "img_1"])
+    assert row.supporting_image_ids == "img_1;img_2"
+    assert row.evidence_standard_met == "true"
+
+
 # --- zero_media_output ---
 
 def test_zero_media_no_history():
