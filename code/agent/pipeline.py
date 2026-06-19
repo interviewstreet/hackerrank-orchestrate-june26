@@ -1,9 +1,11 @@
 """Single-row pipeline: media → (maybe) VLM → validate → OutputRow.
 
 run_row() is the public API:
-    - loads media for the row
-    - checks for zero-media short-circuit
+    - resolves media paths against challenge/dataset/
+    - checks for zero-media short-circuit (no API call)
     - checks cache; calls VLM on miss
+    - on ModelCallError: builds a safe NEI row (valid_image=true if media
+      existed), and does NOT write to cache
     - validates and merges deterministic rules
     - returns (OutputRow, RowStats)
 """
@@ -16,9 +18,9 @@ from code.agent.evidence import EvidenceLoader
 from code.agent.history import HistoryLoader
 from code.agent.media import load_row_media
 from code.agent.models import ClaimRow, OutputRow, RowStats
-from code.agent.prompt import STRATEGY_A, STRATEGY_B, build_system_prompt, build_user_message
+from code.agent.prompt import STRATEGY_B, build_system_prompt, build_user_message
 from code.agent.validator import validate_and_merge, zero_media_output
-from code.agent.vision_client import VisionClient
+from code.agent.vision_client import ModelCallError, VisionClient
 
 
 def _history_text(claim: ClaimRow, history_loader: HistoryLoader) -> str | None:
@@ -32,6 +34,34 @@ def _history_text(claim: ClaimRow, history_loader: HistoryLoader) -> str | None:
     )
 
 
+def _failure_row(claim: ClaimRow, history, has_media: bool) -> OutputRow:
+    """Deterministic NEI row for transient model failure.
+
+    valid_image reflects whether usable media existed (a transient API
+    failure does not make images invalid).
+    """
+    from code.agent.validator import _list_to_csv, _HISTORY_FLAG_TRIGGERS
+    risk_flags = ["manual_review_required"]
+    if history is not None and (history.flag_set & _HISTORY_FLAG_TRIGGERS):
+        risk_flags.append("user_history_risk")
+    return OutputRow(
+        user_id=claim.user_id,
+        image_paths=claim.image_paths,
+        user_claim=claim.user_claim,
+        claim_object=claim.claim_object,
+        evidence_standard_met="false",
+        evidence_standard_met_reason="Model call failed; manual review required.",
+        risk_flags=_list_to_csv(risk_flags),
+        issue_type="unknown",
+        object_part="unknown",
+        claim_status="not_enough_information",
+        claim_status_justification="Automated review unavailable due to model error.",
+        supporting_image_ids="none",
+        valid_image=str(has_media).lower(),
+        severity="unknown",
+    )
+
+
 def run_row(
     claim: ClaimRow,
     repo_root: Path,
@@ -41,11 +71,16 @@ def run_row(
     client: VisionClient,
     strategy: str,
 ) -> tuple[OutputRow, RowStats]:
-    """Process one ClaimRow end-to-end and return the final row + stats."""
+    """Process one ClaimRow end-to-end and return the final row + stats.
+
+    Image paths in the CSV are relative to challenge/dataset/, so we resolve
+    them against repo_root / "dataset".
+    """
     stats = RowStats(user_id=claim.user_id, strategy=strategy)
+    dataset_root = repo_root / "dataset"
 
     # --- media loading ---
-    media_files = load_row_media(claim.image_path_list, repo_root)
+    media_files = load_row_media(claim.image_path_list, dataset_root)
     total_frames = sum(len(mf.usable_frames) for mf in media_files)
     stats.images_submitted = len(media_files)
     stats.frames_extracted = total_frames
@@ -65,7 +100,7 @@ def run_row(
         provider=client.provider,
         model=client.model,
         strategy=strategy,
-        claim_text=claim.user_claim,
+        claim=claim,
         evidence_text=evidence_text,
         history_text=hist_text,
         media_files=media_files,
@@ -87,9 +122,13 @@ def run_row(
         evidence_text=evidence_text,
         strategy=strategy,
     )
-    raw_output = client.call(system_prompt, user_content, stats)
+    try:
+        raw_output = client.call(system_prompt, user_content, stats)
+    except ModelCallError:
+        # Transient failure — do NOT cache; return safe NEI row
+        return _failure_row(claim, history, has_media=True), stats
 
-    # --- persist to cache ---
+    # --- persist to cache only on success ---
     cache.set(key, raw_output)
 
     # --- deterministic validation & merge ---

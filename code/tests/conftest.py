@@ -10,6 +10,12 @@ def repo_root() -> Path:
 
 
 @pytest.fixture
+def dataset_root(repo_root: Path) -> Path:
+    """Root for resolving CSV image paths (challenge/dataset/)."""
+    return repo_root / "dataset"
+
+
+@pytest.fixture
 def sample_csv(repo_root: Path) -> Path:
     return repo_root / "dataset" / "sample_claims.csv"
 

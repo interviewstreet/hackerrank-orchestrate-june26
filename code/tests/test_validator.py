@@ -115,6 +115,29 @@ def test_history_no_flags_no_merge():
     assert "user_history_risk" not in row.risk_flags
 
 
+def test_history_manual_review_adds_flag():
+    hist = _history_with_flags("manual_review_required")
+    row = validate_and_merge(_raw_output(), _claim(), hist, ["img_1"])
+    assert "manual_review_required" in row.risk_flags
+
+
+def test_history_both_flags_all_added():
+    hist = _history_with_flags("fraud_flag;manual_review_required")
+    row = validate_and_merge(_raw_output(), _claim(), hist, ["img_1"])
+    assert "user_history_risk" in row.risk_flags
+    assert "manual_review_required" in row.risk_flags
+
+
+def test_none_sentinel_removed_when_real_flags_added():
+    """When history injects real flags, the 'none' sentinel must be removed."""
+    raw = _raw_output(risk_flags=["none"])
+    hist = _history_with_flags("fraud_flag")
+    row = validate_and_merge(raw, _claim(), hist, ["img_1"])
+    # 'none' must not appear alongside real flags
+    assert "none" not in row.risk_flags
+    assert "user_history_risk" in row.risk_flags
+
+
 # --- valid_image=False propagation ---
 
 def test_invalid_image_forces_not_enough_information():

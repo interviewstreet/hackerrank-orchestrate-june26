@@ -16,7 +16,9 @@ from code.agent.models import RowStats
 class RunAccounting:
     """Aggregates per-row RowStats across an entire pipeline run."""
     total_rows: int = 0
+    zero_media_rows: int = 0
     cache_hits: int = 0
+    total_api_attempts: int = 0   # counts every SDK call including retries
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     total_latency_ms: float = 0.0
@@ -28,8 +30,11 @@ class RunAccounting:
 
     def add(self, stats: RowStats) -> None:
         self.total_rows += 1
+        if stats.frames_extracted == 0 and not stats.cache_hit:
+            self.zero_media_rows += 1
         if stats.cache_hit:
             self.cache_hits += 1
+        self.total_api_attempts += stats.api_attempts
         self.total_input_tokens += stats.input_tokens
         self.total_output_tokens += stats.output_tokens
         self.total_latency_ms += stats.latency_ms
@@ -48,8 +53,9 @@ class RunAccounting:
         lines = [
             "=== Run Accounting Summary ===",
             f"  Rows processed     : {self.total_rows}",
+            f"  Zero-media rows    : {self.zero_media_rows}",
             f"  Cache hits         : {self.cache_hits}",
-            f"  API calls          : {self.total_rows - self.cache_hits}",
+            f"  SDK requests sent  : {self.total_api_attempts}",
             f"  Total input tokens : {self.total_input_tokens:,}",
             f"  Total output tokens: {self.total_output_tokens:,}",
             f"  Total latency      : {self.total_latency_ms / 1000:.1f}s",

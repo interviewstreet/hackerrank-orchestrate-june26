@@ -76,17 +76,37 @@ _HISTORY_FLAG_TRIGGERS = frozenset({
     "fraud_flag", "manual_review_required",
 })
 
+_HISTORY_MANUAL_REVIEW_TRIGGERS = frozenset({
+    "manual_review_required",
+})
+
 
 def _merge_history_flags(
     risk_flags: list[str], history: HistoryRecord | None
 ) -> list[str]:
-    """If user history contains any concerning flags, add 'user_history_risk'."""
+    """Deterministically merge history-derived flags into the VLM risk_flags list.
+
+    Rules (applied in order):
+    1. If history has any flag in _HISTORY_FLAG_TRIGGERS → add 'user_history_risk'.
+    2. If history explicitly carries 'manual_review_required' → add it.
+    3. Remove the sentinel 'none' whenever at least one real flag exists.
+    """
     if history is None:
         return risk_flags
+
+    flags = list(risk_flags)
+
     if history.flag_set & _HISTORY_FLAG_TRIGGERS:
-        if "user_history_risk" not in risk_flags:
-            return risk_flags + ["user_history_risk"]
-    return risk_flags
+        if "user_history_risk" not in flags:
+            flags.append("user_history_risk")
+
+    if history.flag_set & _HISTORY_MANUAL_REVIEW_TRIGGERS:
+        if "manual_review_required" not in flags:
+            flags.append("manual_review_required")
+
+    # Remove sentinel "none" when real flags are present
+    real = [f for f in flags if f != "none"]
+    return real if real else ["none"]
 
 
 # ---------------------------------------------------------------------------

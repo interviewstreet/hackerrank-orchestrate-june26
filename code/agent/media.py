@@ -93,23 +93,52 @@ def _get_video_duration(path: Path) -> float | None:
         return None
 
 
+def _extract_single_frame(path: Path, max_long_edge: int) -> list[bytes]:
+    """Extract the first/only frame from a durationless container (AVIF, single-image MP4).
+
+    Some files use ISOBMFF (ftyp/moov atoms) as an image container rather than
+    a video stream.  FFprobe reports no duration for these; seeking is not
+    possible, but a simple first-frame extraction works.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-i", str(path),
+                "-frames:v", "1",
+                "-f", "image2pipe",
+                "-vcodec", "mjpeg",
+                "pipe:1",
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+        if result.returncode == 0 and result.stdout:
+            return [_normalize_to_jpeg(result.stdout, max_long_edge)]
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+    return []
+
+
 def extract_video_frames(
     path: Path,
     n_frames: int = FFMPEG_N_FRAMES,
     max_long_edge: int = MAX_LONG_EDGE,
 ) -> list[bytes]:
-    """Extract *n_frames* evenly-spaced frames from a video using FFmpeg.
+    """Extract up to *n_frames* frames from a video/image container using FFmpeg.
 
-    Frame positions: t_i = duration * (i + 1) / (n + 1) for i in 0..n-1
-    Each raw MJPEG frame is then normalised with Pillow (long-edge cap).
-    Returns list of normalised JPEG bytes.  Returns [] on any failure.
+    For actual video streams: positions t_i = duration*(i+1)/(n+1).
+    For durationless containers (AVIF, single-frame MP4): extracts one frame.
+    All frames are Pillow-normalised to JPEG with the long-edge capped.
+    Returns [] on any failure.
     """
     if not _ffmpeg_available():
         return []
 
     duration = _get_video_duration(path)
     if duration is None or duration <= 0:
-        return []
+        # Durationless image container (e.g. AVIF stored with .jpg extension)
+        return _extract_single_frame(path, max_long_edge)
 
     frames: list[bytes] = []
     for i in range(n_frames):
@@ -195,11 +224,34 @@ def load_media_file(path: Path) -> MediaFile:
         )
 
 
-def load_row_media(image_path_strings: list[str], repo_root: Path) -> list[MediaFile]:
-    """Load all images for one CSV row.  Paths are relative to repo_root."""
+def load_row_media(image_path_strings: list[str], dataset_root: Path) -> list[MediaFile]:
+    """Load all images for one CSV row.
+
+    *image_path_strings* contains paths as they appear in claims.csv — i.e.
+    relative to the *dataset/* directory (e.g. ``images/test/case_001/img_1.jpg``).
+    *dataset_root* must point at the ``challenge/dataset/`` folder.
+
+    Path-traversal safety: any path that resolves outside *dataset_root* is
+    rejected and treated as MISSING.
+    """
+    resolved_root = dataset_root.resolve()
     result: list[MediaFile] = []
     for rel in image_path_strings:
-        abs_path = repo_root / rel
+        abs_path = (dataset_root / rel).resolve()
+        # Reject traversal outside dataset_root
+        try:
+            abs_path.relative_to(resolved_root)
+        except ValueError:
+            result.append(
+                MediaFile(
+                    original_path=rel,
+                    image_id=Path(rel).stem,
+                    actual_format="TRAVERSAL",
+                    usable_frames=[],
+                    frame_labels=[],
+                )
+            )
+            continue
         if not abs_path.exists():
             result.append(
                 MediaFile(

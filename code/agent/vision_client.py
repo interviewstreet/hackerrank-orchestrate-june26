@@ -1,10 +1,14 @@
-"""VisionClient abstraction — OpenAI-compatible adapter (primary: Qwen/dashscope-intl).
+"""VisionClient abstraction — OpenAI-compatible adapter (Qwen/dashscope-intl MVP).
 
 Provider configuration is entirely through environment variables:
-    MODEL_PROVIDER   qwen | openai | anthropic  (default: qwen)
+    MODEL_PROVIDER   qwen                (Qwen/DashScope International)
     OPENAI_BASE_URL  https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-    DASHSCOPE_API_KEY / OPENAI_API_KEY   (never logged or printed)
-    VISION_MODEL     qwen3.5-plus | qwen3.5-flash | gpt-4o | ...
+                     (defaults to DashScope International if unset for Qwen)
+    DASHSCOPE_API_KEY                    (never logged or printed)
+    VISION_MODEL     qwen3.5-plus        (or qwen3.5-flash)
+
+API secrets are read from environment variables only and are never written to
+any file, log, or string representation of RowStats.
 """
 from __future__ import annotations
 
@@ -16,8 +20,10 @@ from abc import ABC, abstractmethod
 from code.agent.models import ModelOutput, RowStats
 
 # ---------------------------------------------------------------------------
-# Pricing snapshot (estimated list prices; free-quota usage is still reported
-# as estimated list cost and labelled as such)
+# Pricing snapshot — estimated list prices as of the date noted.
+# Free-quota usage is still reported as estimated list cost and labelled as
+# such. If the provider omits usage metadata, cost is recorded as None (not
+# estimated from byte count per Codex guidance).
 # ---------------------------------------------------------------------------
 PRICING_SNAPSHOT: dict[str, dict] = {
     "qwen3.5-plus": {
@@ -30,12 +36,10 @@ PRICING_SNAPSHOT: dict[str, dict] = {
         "input_per_1m_usd": 0.07,
         "output_per_1m_usd": 0.30,
     },
-    "gpt-4o": {
-        "date": "2026-06-19",
-        "input_per_1m_usd": 2.50,
-        "output_per_1m_usd": 10.00,
-    },
 }
+
+# Default base URL for Qwen/DashScope International
+_DASHSCOPE_INTL_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
 
 
 def _estimated_cost(
@@ -51,22 +55,11 @@ def _estimated_cost(
 
 
 # ---------------------------------------------------------------------------
-# Fallback model output (used when all retries fail)
+# Distinguishable model-call failure (never cached)
 # ---------------------------------------------------------------------------
 
-def _fallback_output(reason: str) -> ModelOutput:
-    return ModelOutput(
-        evidence_standard_met=False,
-        evidence_standard_met_reason=f"Model call failed: {reason[:120]}",
-        risk_flags=["manual_review_required"],
-        issue_type="unknown",
-        object_part="unknown",
-        claim_status="not_enough_information",
-        claim_status_justification="Model call failed; cannot evaluate.",
-        supporting_image_ids=["none"],
-        valid_image=False,
-        severity="unknown",
-    )
+class ModelCallError(Exception):
+    """Raised when all VLM call retries are exhausted."""
 
 
 # ---------------------------------------------------------------------------
@@ -85,8 +78,34 @@ def _parse_raw(raw_text: str) -> dict:
     return json.loads(text)
 
 
+def _coerce_bool(v: object, default: bool = False) -> bool:
+    """Safely coerce a JSON value to bool.
+
+    Recognized:
+      JSON booleans true/false → pass through.
+      Strings "true"/"false" (case-insensitive) → True/False.
+      Strings "1"/"0" → True/False.
+      Integers/floats 1/0 → True/False.
+    Everything else (including "yes", "no", None, dicts, lists) → default.
+
+    NOTE: bool("false") is Python-True; this function returns False for "false".
+    """
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        low = v.strip().lower()
+        if low in ("true", "1"):
+            return True
+        if low in ("false", "0"):
+            return False
+        return default
+    if isinstance(v, (int, float)):
+        return bool(v)
+    return default
+
+
 def _coerce_model_output(raw: dict) -> ModelOutput:
-    def as_list(v) -> list[str]:
+    def as_list(v: object) -> list[str]:
         if isinstance(v, list):
             return [str(x).strip() for x in v if str(x).strip()]
         if isinstance(v, str):
@@ -94,7 +113,7 @@ def _coerce_model_output(raw: dict) -> ModelOutput:
         return ["none"]
 
     return ModelOutput(
-        evidence_standard_met=bool(raw.get("evidence_standard_met", False)),
+        evidence_standard_met=_coerce_bool(raw.get("evidence_standard_met"), False),
         evidence_standard_met_reason=str(raw.get("evidence_standard_met_reason", "")).strip(),
         risk_flags=as_list(raw.get("risk_flags", ["none"])),
         issue_type=str(raw.get("issue_type", "unknown")).strip(),
@@ -102,7 +121,7 @@ def _coerce_model_output(raw: dict) -> ModelOutput:
         claim_status=str(raw.get("claim_status", "not_enough_information")).strip(),
         claim_status_justification=str(raw.get("claim_status_justification", "")).strip(),
         supporting_image_ids=as_list(raw.get("supporting_image_ids", ["none"])),
-        valid_image=bool(raw.get("valid_image", False)),
+        valid_image=_coerce_bool(raw.get("valid_image"), False),
         severity=str(raw.get("severity", "unknown")).strip(),
     )
 
@@ -119,7 +138,11 @@ class VisionClient(ABC):
         user_content: list[dict],
         stats: RowStats,
     ) -> ModelOutput:
-        """Send one multimodal request. Mutates *stats* with usage data."""
+        """Send one multimodal request. Mutates *stats* with usage data.
+
+        Raises ModelCallError when all retries are exhausted.
+        Never returns a fallback sentinel — callers must handle ModelCallError.
+        """
         ...
 
     @property
@@ -132,12 +155,11 @@ class VisionClient(ABC):
 
 
 # ---------------------------------------------------------------------------
-# OpenAI-compatible adapter (covers Qwen/dashscope-intl, standard OpenAI,
-# DeepSeek-VL, and any other OAI-compatible vision endpoint)
+# OpenAI-compatible adapter (Qwen/dashscope-intl primary)
 # ---------------------------------------------------------------------------
 
 class OpenAICompatVisionClient(VisionClient):
-    """Primary adapter.  Uses the openai Python SDK against any OAI-compatible endpoint."""
+    """Primary adapter.  Uses the openai Python SDK against the dashscope-intl endpoint."""
 
     def __init__(
         self,
@@ -147,24 +169,21 @@ class OpenAICompatVisionClient(VisionClient):
     ) -> None:
         from openai import OpenAI
 
-        provider = os.environ.get("MODEL_PROVIDER", "qwen").lower()
-        if provider == "qwen":
-            api_key = os.environ.get("DASHSCOPE_API_KEY") or os.environ.get("OPENAI_API_KEY")
-        else:
-            api_key = os.environ.get("OPENAI_API_KEY")
-
+        api_key = os.environ.get("DASHSCOPE_API_KEY")
         if not api_key:
             raise RuntimeError(
-                "No API key found.  Set DASHSCOPE_API_KEY (for Qwen) "
-                "or OPENAI_API_KEY in your .env file."
+                "DASHSCOPE_API_KEY is not set.  "
+                "Add it to challenge/.env (which is gitignored)."
             )
 
-        base_url = os.environ.get("OPENAI_BASE_URL") or None
+        # Default to DashScope International if base URL is not set
+        base_url = os.environ.get("OPENAI_BASE_URL") or _DASHSCOPE_INTL_BASE_URL
+
         self._model = model or os.environ.get("VISION_MODEL", "qwen3.5-plus")
         self._client = OpenAI(api_key=api_key, base_url=base_url)
         self._max_retries = max_retries
         self._enable_thinking = enable_thinking
-        self._provider_name = os.environ.get("MODEL_PROVIDER", "qwen")
+        self._provider_name = "qwen"
 
     @property
     def provider(self) -> str:
@@ -180,17 +199,17 @@ class OpenAICompatVisionClient(VisionClient):
         user_content: list[dict],
         stats: RowStats,
     ) -> ModelOutput:
-        messages = [
+        messages: list[dict] = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
         ]
-        # Qwen3 thinking mode — disable for predictable latency/cost
         extra_body: dict = {}
         if not self._enable_thinking:
             extra_body["enable_thinking"] = False
 
         last_exc: Exception | None = None
         for attempt in range(self._max_retries + 1):
+            stats.api_attempts += 1   # count every SDK call including retries
             t0 = time.monotonic()
             try:
                 resp = self._client.chat.completions.create(
@@ -211,15 +230,16 @@ class OpenAICompatVisionClient(VisionClient):
                 stats.provider = self._provider_name
                 stats.model = self._model
 
-                est_in, est_out = _estimated_cost(self._model, in_tok, out_tok)
-                stats.estimated_input_cost_usd = (
-                    (stats.estimated_input_cost_usd or 0.0) + est_in
-                    if est_in is not None else stats.estimated_input_cost_usd
-                )
-                stats.estimated_output_cost_usd = (
-                    (stats.estimated_output_cost_usd or 0.0) + est_out
-                    if est_out is not None else stats.estimated_output_cost_usd
-                )
+                if in_tok > 0 or out_tok > 0:
+                    est_in, est_out = _estimated_cost(self._model, in_tok, out_tok)
+                    if est_in is not None:
+                        stats.estimated_input_cost_usd = (
+                            (stats.estimated_input_cost_usd or 0.0) + est_in
+                        )
+                    if est_out is not None:
+                        stats.estimated_output_cost_usd = (
+                            (stats.estimated_output_cost_usd or 0.0) + est_out
+                        )
 
                 raw_text = resp.choices[0].message.content or ""
                 raw_dict = _parse_raw(raw_text)
@@ -228,18 +248,18 @@ class OpenAICompatVisionClient(VisionClient):
             except json.JSONDecodeError as exc:
                 last_exc = exc
                 stats.retries += 1
-                # One controlled repair: try again with stricter instruction
                 if attempt == 0:
-                    messages = messages + [{
-                        "role": "assistant",
-                        "content": resp.choices[0].message.content,
-                    }, {
-                        "role": "user",
-                        "content": (
-                            "Your previous response was not valid JSON. "
-                            "Return ONLY the JSON object, no markdown, no explanation."
-                        ),
-                    }]
+                    # One controlled repair attempt
+                    messages = messages + [
+                        {"role": "assistant", "content": resp.choices[0].message.content},
+                        {
+                            "role": "user",
+                            "content": (
+                                "Your previous response was not valid JSON. "
+                                "Return ONLY the JSON object, no markdown, no explanation."
+                            ),
+                        },
+                    ]
                 else:
                     time.sleep(2 ** attempt)
             except Exception as exc:
@@ -248,7 +268,7 @@ class OpenAICompatVisionClient(VisionClient):
                 time.sleep(min(2 ** attempt, 8))
 
         stats.error = str(last_exc)
-        return _fallback_output(str(last_exc))
+        raise ModelCallError(str(last_exc)) from last_exc
 
 
 # ---------------------------------------------------------------------------

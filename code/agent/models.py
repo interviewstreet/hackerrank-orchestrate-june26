@@ -117,6 +117,7 @@ class RowStats(BaseModel):
     frames_extracted: int = 0
     latency_ms: float = 0.0
     cache_hit: bool = False
+    api_attempts: int = 0   # incremented before every SDK call including retries
     retries: int = 0
     error: str | None = None
     provider: str = ""
