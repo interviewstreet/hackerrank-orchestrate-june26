@@ -162,6 +162,13 @@ Report:
 
 You are not expected to optimize perfectly, but your solution should show that you considered cost, latency, rate limits, and unnecessary repeated calls.
 
+## Requirements:
+- Must read the provided CSV files and local images.
+- Must produce output.csv with the exact schema in problem_statement.md.
+- Must include an evaluation workflow
+- Must avoid hardcoded test labels or file-specific answers.
+- Beyond that you are free to bring your own approach and innovation: VLMs, LLMs, structured prompting, evaluation pipelines, model comparison, or anything else.
+
 ## Submission
 
 Submit:

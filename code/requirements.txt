@@ -1,0 +1,7 @@
+google-genai
+numpy
+pandas
+pillow
+pydantic
+python-dotenv
+pyyaml

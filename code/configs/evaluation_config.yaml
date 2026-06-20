@@ -1,0 +1,12 @@
+output_dir: outputs/evaluation_runs
+sample_count:
+sample_seed: 42
+
+strategies:
+  - name: flash35_analysis_v5_history_with_no_judge
+    model: gemini-3.5-flash
+    analysis_prompt_version: analysis_v5
+    include_user_history: true
+    use_judge: false
+    # judge_model: gemini-3.5-flash
+    # judge_prompt_version: judge_v2
