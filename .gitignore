@@ -22,6 +22,9 @@ code/cache/
 # Editor
 .vscode/
 
+# Submission build artifact (regenerate via git archive)
+code.zip
+
 # promptfoo generated artifacts (keep config + .py, drop outputs)
 code/promptfoo/tests.json
 code/promptfoo/results.json
